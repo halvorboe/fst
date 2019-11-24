@@ -780,7 +780,7 @@ pub struct StreamWithState<'f, A=AlwaysMatch> where A: Automaton {
 #[derive(Clone, Debug)]
 struct StreamState<'f, S> {
     node: Node<'f>,
-    trans: usize,
+    trans: usize, // The state needs to contain the current transformation, to be able to keep going from it.
     out: Output,
     aut_state: S,
 }
@@ -809,10 +809,16 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
     /// sure our stack is correct, which includes accounting for automaton
     /// states.
     fn seek_min(&mut self, min: Bound) {
+        // If the bound is the empty string.
         if min.is_empty() {
             if min.is_inclusive() {
+                // If the bound includes the empty string the output should be:
+                // 1. If the root node is the final node, aka the set contains only the empty string it should be the empty string.
+                // 2. Otherwise it should be None because there is no empty string.
                 self.empty_output = self.fst.empty_final_output(self.data);
             }
+            // Push the root node.
+            // Why does it do that?
             self.stack.clear();
             self.stack = vec![StreamState {
                 node:  self.fst.root(self.data),
@@ -839,12 +845,16 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
         // not actually exist in the FST.
         let mut node = self.fst.root(self.data);
         let mut out = Output::zero();
+        // Get the starting state.
         let mut aut_state = self.aut.start();
+        // Iterate through every item in the bound.
         for &b in key {
             match node.find_input(b) {
                 Some(i) => {
+                    // If the bound is a prefix so far, push it to the FST.
                     let t = node.transition(i);
                     let prev_state = aut_state;
+                    // Give out the next state given the character.
                     aut_state = self.aut.accept(&prev_state, b);
                     self.inp.push(b);
                     self.stack.push(StreamState {
@@ -877,9 +887,11 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
         if !self.stack.is_empty() {
             let last = self.stack.len() - 1;
             if inclusive {
+                // If the bound is inclusive, remove the bound itself.
                 self.stack[last].trans -= 1;
                 self.inp.pop();
             } else {
+                
                 let node = self.stack[last].node;
                 let trans = self.stack[last].trans;
                 self.stack.push(StreamState {
