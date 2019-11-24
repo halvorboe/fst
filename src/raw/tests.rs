@@ -245,7 +245,7 @@ macro_rules! test_range {
             let mut rdr = Stream::new(&fst.meta, fst.data.deref(), AlwaysMatch, $min, $max);
             for i in $imin..$imax {
                 assert_eq!(rdr.next().unwrap(),
-                           (items[i].0.as_bytes(), Output::new(items[i].1)));
+                           (items[i].0.as_bytes(), Output::new(items[items.len() - 1 - i].1)));
             }
             assert_eq!(rdr.next(), None);
         }
