@@ -785,6 +785,9 @@ struct StreamState<'f, S> {
     aut_state: S,
 }
 
+// Should maybe mark the node as done with after getting the next trans and it going out of bounds. 
+// Would avoid the current problem.
+
 impl<'f, A: Automaton> StreamWithState<'f, A> {
 
     fn new(fst: &'f FstMeta, data: &'f [u8], aut: A, min: Bound, max: Bound) -> Self {
@@ -891,10 +894,12 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
                 self.stack[last].trans -= 1;
                 self.inp.pop();
             } else {
-                
+                // Wtf
                 let node = self.stack[last].node;
                 let trans = self.stack[last].trans;
                 self.stack.push(StreamState {
+                    // Stream state currently contains the 1st transition. The reason it does not check if it's the final one.
+                    // Therefor it has to be changed to the next to final one.
                     node: self.fst.node(node.transition(trans - 1).addr, self.data),
                     trans: 0,
                     out,
