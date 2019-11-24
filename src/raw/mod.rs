@@ -787,6 +787,7 @@ struct StreamState<'f, S> {
 
 // Should maybe mark the node as done with after getting the next trans and it going out of bounds. 
 // Would avoid the current problem.
+// Stream state trans should never be out of bounds!
 
 impl<'f, A: Automaton> StreamWithState<'f, A> {
 
@@ -800,6 +801,7 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
             stack: vec![],
             end_at: max,
         };
+        // Could be done lazily to allow for reversing.
         rdr.seek_min(min);
         rdr
     }
@@ -912,6 +914,7 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
     #[inline]
     fn next<F, T>(&mut self, transform: F) -> Option<(&[u8], Output, T)> where F: Fn(&A::State) -> T {
         if let Some(out) = self.empty_output.take() {
+            // Is for the case where the max is exclusive and the empty string.
             if self.end_at.exceeded_by(&[]) {
                 self.stack.clear();
                 return None;
