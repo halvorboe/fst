@@ -774,7 +774,9 @@ pub struct StreamWithState<'f, A=AlwaysMatch> where A: Automaton {
     inp: Vec<u8>,
     empty_output: Option<Output>,
     stack: Vec<StreamState<'f, A::State>>,
+    min: Bound,
     end_at: Bound,
+    initialized: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -799,10 +801,11 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
             inp: Vec::with_capacity(16),
             empty_output: None,
             stack: vec![],
+            min: min,
             end_at: max,
+            initialized: false,
         };
         // Could be done lazily to allow for reversing.
-        rdr.seek_min(min);
         rdr
     }
 
@@ -813,7 +816,9 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
     /// This theoretically should be straight-forward, but we need to make
     /// sure our stack is correct, which includes accounting for automaton
     /// states.
-    fn seek_min(&mut self, min: Bound) {
+    fn seek(&mut self) {
+        self.initialized = true;
+        let min = &self.min;
         // If the bound is the empty string.
         if min.is_empty() {
             if min.is_inclusive() {
@@ -913,6 +918,9 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
 
     #[inline]
     fn next<F, T>(&mut self, transform: F) -> Option<(&[u8], Output, T)> where F: Fn(&A::State) -> T {
+        if !self.initialized {
+            self.seek()
+        }
         if let Some(out) = self.empty_output.take() {
             // Is for the case where the max is exclusive and the empty string.
             if self.end_at.exceeded_by(&[]) {
@@ -923,6 +931,7 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
             if self.aut.is_match(&start) {
                 return Some((&[], out, transform(&start)));
             }
+            // Else return None.
         }
         while let Some(state) = self.stack.pop() {
             if state.trans >= state.node.len() || !self.aut.can_match(&state.aut_state) {
