@@ -775,7 +775,7 @@ pub struct StreamWithState<'f, A=AlwaysMatch> where A: Automaton {
     empty_output: Option<Output>,
     stack: Vec<StreamState<'f, A::State>>,
     min: Bound,
-    end_at: Bound,
+    max: Bound,
     initialized: bool,
 }
 
@@ -785,16 +785,21 @@ struct StreamState<'f, S> {
     trans: usize, // The state needs to contain the current transformation, to be able to keep going from it.
     out: Output,
     aut_state: S,
+    done: bool, // Boolean to mark that the streamstate does not have any items left. 
 }
 
 // Should maybe mark the node as done with after getting the next trans and it going out of bounds. 
 // Would avoid the current problem.
 // Stream state trans should never be out of bounds!
 
+// TODO:
+// - Make sure the state can know if it's done.
+// - Seek should be able to seek in both directions.
+
 impl<'f, A: Automaton> StreamWithState<'f, A> {
 
     fn new(fst: &'f FstMeta, data: &'f [u8], aut: A, min: Bound, max: Bound) -> Self {
-        let mut rdr = StreamWithState {
+        StreamWithState {
             fst,
             data,
             aut,
@@ -802,11 +807,9 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
             empty_output: None,
             stack: vec![],
             min: min,
-            end_at: max,
+            max: max,
             initialized: false,
-        };
-        // Could be done lazily to allow for reversing.
-        rdr
+        }
     }
 
     /// Seeks the underlying stream such that the next key to be read is the
@@ -835,6 +838,7 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
                 trans: 0,
                 out: Output::zero(),
                 aut_state: self.aut.start(),
+                done: false,
             }];
             return;
         }
@@ -872,6 +876,7 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
                         trans: i+1,
                         out,
                         aut_state: prev_state,
+                        done: false,
                     });
                     out = out.cat(t.out);
                     node = self.fst.node(t.addr, self.data);
@@ -889,6 +894,7 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
                             .unwrap_or(node.len()),
                         out,
                         aut_state,
+                        done: false,
                     });
                     return;
                 }
@@ -911,6 +917,7 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
                     trans: 0,
                     out,
                     aut_state,
+                    done: false,
                 });
             }
         }
@@ -923,7 +930,7 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
         }
         if let Some(out) = self.empty_output.take() {
             // Is for the case where the max is exclusive and the empty string.
-            if self.end_at.exceeded_by(&[]) {
+            if self.max.exceeded_by(&[]) {
                 self.stack.clear();
                 return None;
             }
@@ -947,7 +954,7 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
             let next_node = self.fst.node(trans.addr, self.data);
             self.inp.push(trans.inp);
             self.stack.push(StreamState {
-                trans: state.trans + 1, .. state
+                trans: state.trans + 1, done: false, .. state
             });
             let ns = transform(&next_state);
             self.stack.push(StreamState {
@@ -955,8 +962,9 @@ impl<'f, A: Automaton> StreamWithState<'f, A> {
                 trans: 0,
                 out,
                 aut_state: next_state,
+                done: false,
             });
-            if self.end_at.exceeded_by(&self.inp) {
+            if self.max.exceeded_by(&self.inp) {
                 // We are done, forever.
                 self.stack.clear();
                 return None;
